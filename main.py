@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+
 # ---------------- Task 1 & 2: Random walkers (your code) ----------------
 def _plot_paths_3d(paths, title, max_traces=15):
     """Plot up to `max_traces` 3D trajectories; paths shape (n, steps+1, 3)."""
