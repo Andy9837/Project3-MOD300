@@ -360,3 +360,90 @@ if __name__ == "__main__":
             print(f"[TEST] {tfunc.__name__}: FAIL -> {exc}")
     if all_ok:
         print("All tests passed ✔️")
+
+
+
+###### NEEEEEW LINE
+
+# main.py
+import numpy as np
+import matplotlib.pyplot as plt
+
+def _wrap(P, box):
+    (xmin, xmax), (ymin, ymax), (zmin, zmax) = box
+    mins = np.array([xmin, ymin, zmin], float)
+    lens = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
+    return mins + ((P - mins) % lens)
+
+# Task 1
+def random_walkers_3d(box, n_walkers, n_steps, step_sigma=1.0, rng=None):
+    rng = np.random.default_rng() if rng is None else rng
+    (xmin, xmax), (ymin, ymax), (zmin, zmax) = box
+    mins = np.array([xmin, ymin, zmin], float)
+    lens = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
+    traj = np.empty((n_steps + 1, n_walkers, 3), float)
+    traj[0] = mins + rng.random((n_walkers, 3)) * lens
+    for t in range(1, n_steps + 1):
+        traj[t] = _wrap(traj[t-1] + rng.normal(0.0, step_sigma, size=(n_walkers, 3)), box)
+    return traj
+
+# Task 2 (fast)
+def random_walkers_3d_fast(box, n_walkers, n_steps, step_sigma=1.0, rng=None):
+    rng = np.random.default_rng() if rng is None else rng
+    (xmin, xmax), (ymin, ymax), (zmin, zmax) = box
+    mins = np.array([xmin, ymin, zmin], float)
+    lens = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
+    traj = np.empty((n_steps + 1, n_walkers, 3), float)
+    traj[0] = mins + rng.random((n_walkers, 3)) * lens
+    steps = rng.normal(0.0, step_sigma, size=(n_steps, n_walkers, 3))
+    pos = traj[0]
+    for t in range(1, n_steps + 1):
+        pos = _wrap(pos + steps[t-1], box)
+        traj[t] = pos
+    return traj
+
+# --- one-line notebook entry points ---
+def task1():
+    """Return shape for Task 1 (for quick check)."""
+    return random_walkers_3d(((0,100),(0,100),(0,100)), 1000, 500, 0.5,
+                             rng=np.random.default_rng(42)).shape
+
+def task2():
+    """Return shape for Task 2 (for quick check)."""
+    return random_walkers_3d_fast(((0,100),(0,100),(0,100)), 1000, 500, 0.5,
+                                  rng=np.random.default_rng(42)).shape
+def _plot(traj, box, title):
+    fig = plt.figure(figsize=(6, 6))
+    ax = fig.add_subplot(111, projection="3d")
+
+    (xmin, xmax), (ymin, ymax), (zmin, zmax) = box
+    L = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
+
+    k = min(8, traj.shape[1])
+    for i in range(k):
+        P = traj[:, i, :].copy()           # (T+1, 3) wrapped to the box
+        d = np.diff(P, axis=0)
+
+        # unwrap: correct jumps larger than half the box by ±L (minimal image)
+        d -= np.where(d >  L/2, L, 0.0)
+        d += np.where(d < -L/2, L, 0.0)
+
+        P_unwrap = np.vstack([P[0:1], P[0:1] + np.cumsum(d, axis=0)])
+        ax.plot(P_unwrap[:, 0], P_unwrap[:, 1], P_unwrap[:, 2], linewidth=1)
+
+    ax.set_title(title)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_paths_task1(n_walkers=8, n_steps=600, step_sigma=0.6, box=((0,100),(0,100),(0,100))):
+    """Figure using Task 1 (simple loop)."""
+    traj = random_walkers_3d(box, n_walkers=n_walkers, n_steps=n_steps, step_sigma=step_sigma)
+    _plot(traj, box, "Random walkers — Task 1 (simple)")
+
+def plot_paths_task2(n_walkers=8, n_steps=600, step_sigma=0.6, box=((0,100),(0,100),(0,100))):
+    """Figure using Task 2 (fast)."""
+    traj = random_walkers_3d_fast(box, n_walkers=n_walkers, n_steps=n_steps, step_sigma=step_sigma)
+    _plot(traj, box, "Random walkers — Task 2 (fast)")
+
+

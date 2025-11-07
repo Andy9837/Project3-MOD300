@@ -327,3 +327,104 @@ def density_from_atoms(elements, volume_angstrom3):
 
     density = total_mass_g / volume_cm3
     return density
+
+
+###newww
+
+def bounding_box_from_atoms(coords, radii, pad=2.0):
+    """
+    Tight axis-aligned box that contains all spheres centered at coords with radii.
+    pad adds extra margin (Å).
+    """
+    coords = np.asarray(coords, float)
+    radii = np.asarray(radii, float)
+    mins = coords.min(axis=0) - radii.max() - pad
+    maxs = coords.max(axis=0) + radii.max() + pad
+    return ((mins[0], maxs[0]), (mins[1], maxs[1]), (mins[2], maxs[2]))
+
+def inaccessible_fraction_union(box, centers, radii, n, rng=None):
+    """
+    Fraction of the box volume occupied by the union of spheres (vectorized).
+    This is identical in spirit to your fraction_inside_union, but takes (ri+rp)
+    radii directly and returns (p, se).
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    centers = np.asarray(centers, float)     # (M,3)
+    radii = np.asarray(radii, float)         # (M,)
+
+    (xmin, xmax), (ymin, ymax), (zmin, zmax) = box
+    mins = np.array([xmin, ymin, zmin], float)
+    lens = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
+
+    P = mins + rng.random((n, 3)) * lens     # (N,3)
+    d2 = np.sum((P[:, None, :] - centers[None, :, :])**2, axis=2)  # (N,M)
+    inside_any = (d2 <= (radii[None, :]**2)).any(axis=1)
+
+    p = inside_any.mean()
+    se = np.sqrt(p * (1.0 - p) / n)
+    return p, se
+
+def accessible_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
+    """
+    Monte Carlo estimate of solvent-accessible volume (Å^3) for a probe of radius rp.
+    coords : (N,3) atomic coordinates (Å)
+    radii  : (N,) van der Waals radii (Å)
+    rp     : probe radius (Å), e.g. 1.4 for water
+    n      : # of samples
+    pad    : extra box padding (Å)
+    Returns: (V_access, SE_access, box)
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+    coords = np.asarray(coords, float)
+    radii = np.asarray(radii, float)
+    box = bounding_box_from_atoms(coords, radii + rp, pad=pad)
+    V_box = box_volume(box)
+
+    # Use inflated radii (ri + rp) for inaccessibility
+    inflated = radii + rp
+    p_in, se_p = inaccessible_fraction_union(box, coords, inflated, n, rng=rng)
+    p_acc = 1.0 - p_in
+    V_acc = V_box * p_acc
+    SE_acc = V_box * se_p
+    return V_acc, SE_acc, box
+
+def blocked_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
+    """
+    Convenience: return the absolute blocked (inaccessible) volume and its SE.
+    """
+    V_acc, SE_acc, box = accessible_volume_mc(coords, radii, rp=rp, n=n, pad=pad, rng=rng)
+    (xmin,xmax),(ymin,ymax),(zmin,zmax) = box
+    V_box = (xmax-xmin)*(ymax-ymin)*(zmax-zmin)
+    V_inacc = V_box - V_acc
+    SE_inacc = SE_acc  # same magnitude, since SE scales with V_box
+    return V_inacc, SE_inacc, box
+
+
+# ---- Convenience: end-to-end for a DNA file ----
+def dna_accessible_volume(filename, rp=1.4, n=1_000_000, pad=2.0, rng=None):
+    """
+    Read DNA atoms from a simple text file (symbol x y z per line),
+    compute accessible volume to probe radius rp.
+    """
+    elems, coords = read_dna_coordinates(filename)
+    radii = atomic_radii(elems)
+    return accessible_volume_mc(coords, radii, rp=rp, n=n, pad=pad, rng=rng)
+
+# ---- Tests (Task 4 quick checks) ----
+def _sphere_test(r=10.0, L=100.0, n=2_000_000, rp=0.0, seed=0):
+    """
+    One-sphere sanity check. Returns (MC_inaccessible, analytic_inaccessible, zscore).
+    """
+    rng = np.random.default_rng(seed)
+    c = np.array([[L/2, L/2, L/2]])
+    box = ((0, L), (0, L), (0, L))
+    inflated = np.array([r + rp])
+    p_in, se_p = inaccessible_fraction_union(box, c, inflated, n, rng=rng)
+    V_box = box_volume(box)
+    V_mc = V_box * p_in
+    V_true = (4.0/3.0) * np.pi * (r + rp)**3
+    z = (V_mc - V_true) / (V_box * se_p + 1e-12)  # ~N(0,1) if well-sampled
+    return V_mc, V_true, z
+
