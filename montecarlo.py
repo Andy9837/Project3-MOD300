@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 #Task 0
 def make_box(xlen, ylen, zlen, origin=(0, 0, 0)):
@@ -328,13 +329,164 @@ def density_from_atoms(elements, volume_angstrom3):
     density = total_mass_g / volume_cm3
     return density
 
+def _wrap(P, box):
+    """
+        Wrap 3D point(s) P into the periodic box.
 
-###newww
+    Parameters
+    ----------
+    P : array_like, shape (..., 3)
+        Point or points to wrap.
+    box : ((xmin, xmax), (ymin, ymax), (zmin, zmax))
+        Axis-aligned bounds.
+
+    Returns
+    -------
+    ndarray, shape (..., 3)
+        Wrapped point(s) inside the box.
+        
+    """
+    (xmin, xmax), (ymin, ymax), (zmin, zmax) = box
+    mins = np.array([xmin, ymin, zmin], float)
+    lens = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
+    return mins + ((P - mins) % lens)
+
+# Task 1
+def random_walkers_3d(box, n_walkers, n_steps, step_sigma=1.0, rng=None):
+    """
+    Generate 3D random-walk trajectories (loop version).
+
+    Parameters
+    ----------
+    box : tuple
+        Axis-aligned box as ((xmin, xmax), (ymin, ymax), (zmin, zmax)).
+    n_walkers : int
+        Number of walkers.
+    n_steps : int
+        Number of steps per walker.
+    step_sigma : float, optional
+        Std. dev. of each step (per axis).
+    rng : np.random.Generator, optional
+        RNG to use; a new default_rng() is created if None.
+
+    Returns
+    -------
+    traj : ndarray, shape (n_steps+1, n_walkers, 3)
+        Positions at t = 0..n_steps. Starts uniform in the box.
+    
+    """
+    rng = np.random.default_rng() if rng is None else rng
+    (xmin, xmax), (ymin, ymax), (zmin, zmax) = box
+    mins = np.array([xmin, ymin, zmin], float)
+    lens = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
+    traj = np.empty((n_steps + 1, n_walkers, 3), float)
+    traj[0] = mins + rng.random((n_walkers, 3)) * lens
+    for t in range(1, n_steps + 1):
+        traj[t] = _wrap(traj[t-1] + rng.normal(0.0, step_sigma, size=(n_walkers, 3)), box)
+    return traj
+
+# Task 2 (fast)
+def random_walkers_3d_fast(box, n_walkers, n_steps, step_sigma=1.0, rng=None):
+    """
+       Generate 3D random-walk trajectories (vectorized/fast).
+
+    Same API as `random_walkers_3d`, but precomputes all steps and
+    updates positions in a vectorized loop for speed.
+
+    Parameters
+    ----------
+    box : tuple
+        ((xmin, xmax), (ymin, ymax), (zmin, zmax)).
+    n_walkers : int
+    n_steps : int
+    step_sigma : float, optional
+    rng : np.random.Generator, optional
+
+    Returns
+    -------
+    traj : ndarray, shape (n_steps+1, n_walkers, 3)
+        Positions at t = 0..n_steps.
+    """
+    rng = np.random.default_rng() if rng is None else rng
+    (xmin, xmax), (ymin, ymax), (zmin, zmax) = box
+    mins = np.array([xmin, ymin, zmin], float)
+    lens = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
+    traj = np.empty((n_steps + 1, n_walkers, 3), float)
+    traj[0] = mins + rng.random((n_walkers, 3)) * lens
+    steps = rng.normal(0.0, step_sigma, size=(n_steps, n_walkers, 3))
+    pos = traj[0]
+    for t in range(1, n_steps + 1):
+        pos = _wrap(pos + steps[t-1], box)
+        traj[t] = pos
+    return traj
+
+
+def task1():
+    """Return shape for Task 1 (for quick check)."""
+    return random_walkers_3d(((0,100),(0,100),(0,100)), 1000, 500, 0.5,
+                             rng=np.random.default_rng(42)).shape
+
+def task2():
+    """Return shape for Task 2 (for quick check)."""
+    return random_walkers_3d_fast(((0,100),(0,100),(0,100)), 1000, 500, 0.5,
+                                  rng=np.random.default_rng(42)).shape
+def _plot(traj, box, title):
+    fig = plt.figure(figsize=(6, 6))
+    ax = fig.add_subplot(111, projection="3d")
+
+    (xmin, xmax), (ymin, ymax), (zmin, zmax) = box
+    L = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
+
+    k = min(8, traj.shape[1])
+    for i in range(k):
+        P = traj[:, i, :].copy()           # (T+1, 3) wrapped to the box
+        d = np.diff(P, axis=0)
+
+        # unwrap: correct jumps larger than half the box by ± L 
+        d -= np.where(d >  L/2, L, 0.0)
+        d += np.where(d < -L/2, L, 0.0)
+
+        P_unwrap = np.vstack([P[0:1], P[0:1] + np.cumsum(d, axis=0)])
+        ax.plot(P_unwrap[:, 0], P_unwrap[:, 1], P_unwrap[:, 2], linewidth=1)
+
+    ax.set_title(title)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_paths_task1(n_walkers=8, n_steps=600, step_sigma=0.6, box=((0,100),(0,100),(0,100))):
+    """Figure using Task 1 (simple loop)."""
+    traj = random_walkers_3d(box, n_walkers=n_walkers, n_steps=n_steps, step_sigma=step_sigma)
+    _plot(traj, box, "Random walkers — Task 1 (simple)")
+
+def plot_paths_task2(n_walkers=8, n_steps=600, step_sigma=0.6, box=((0,100),(0,100),(0,100))):
+    """Figure using Task 2 (fast)."""
+    traj = random_walkers_3d_fast(box, n_walkers=n_walkers, n_steps=n_steps, step_sigma=step_sigma)
+    _plot(traj, box, "Random walkers — Task 2 (fast)")
+
+
+
+## Topic 2, Task 3-5
 
 def bounding_box_from_atoms(coords, radii, pad=2.0):
     """
-    Tight axis-aligned box that contains all spheres centered at coords with radii.
-    pad adds extra margin (Å).
+        Compute an axis-aligned bounding box that contains all spheres:
+    centers = coords[i], radii = radii[i], each sphere inflated by `pad` (Å).
+
+    Parameters
+    ----------
+    coords : array_like, shape (N, 3)
+        Atomic coordinates (Å).
+    radii : array_like, shape (N,)
+        Atomic radii (Å).
+    pad : float, optional
+        Extra margin added to all sides (Å). Default 2.0.
+
+    Returns
+    -------
+    box : tuple
+        ((xmin, xmax), (ymin, ymax), (zmin, zmax)), in Å.
+    
     """
     coords = np.asarray(coords, float)
     radii = np.asarray(radii, float)
@@ -344,9 +496,26 @@ def bounding_box_from_atoms(coords, radii, pad=2.0):
 
 def inaccessible_fraction_union(box, centers, radii, n, rng=None):
     """
-    Fraction of the box volume occupied by the union of spheres (vectorized).
-    This is identical in spirit to your fraction_inside_union, but takes (ri+rp)
-    radii directly and returns (p, se).
+        Estimate the fraction of the box occupied by the union of spheres.
+
+    Parameters
+    ----------
+    box : ((xmin,xmax),(ymin,ymax),(zmin,zmax))
+    centers : array_like, shape (M,3)
+    radii : array_like, shape (M,)
+        Use inflated radii (ri + rp).
+    n : int
+        Number of Monte Carlo samples.
+    rng : np.random.Generator, optional
+    batch : int or None
+        If set, process samples in batches of this size to reduce memory.
+
+    Returns
+    -------
+    p : float
+        Estimated blocked fraction (inaccessible).
+    se : float
+        Standard error of p (binomial SE).
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -368,12 +537,36 @@ def inaccessible_fraction_union(box, centers, radii, n, rng=None):
 def accessible_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
     """
     Monte Carlo estimate of solvent-accessible volume (Å^3) for a probe of radius rp.
-    coords : (N,3) atomic coordinates (Å)
-    radii  : (N,) van der Waals radii (Å)
-    rp     : probe radius (Å), e.g. 1.4 for water
-    n      : # of samples
-    pad    : extra box padding (Å)
-    Returns: (V_access, SE_access, box)
+
+    Parameters
+    ----------
+    coords : array_like, shape (N,3)
+        Atomic coordinates (Å).
+    radii : array_like, shape (N,)
+        Van der Waals radii (Å).
+    rp : float, optional
+        Probe radius (Å), e.g. 1.4 for water.
+    n : int, optional
+        Number of random samples.
+    pad : float, optional
+        Extra box padding (Å) added around inflated atoms.
+    rng : np.random.Generator, optional
+        RNG to use; a new default_rng() is created if None.
+    batch : int or None, optional
+        If set, process samples in batches of this size (memory-safe).
+    with_details : bool, optional
+        If True, also return (rp, accessible_fraction).
+
+    Returns
+    -------
+    V_acc : float
+        Accessible volume (Å^3).
+    SE_acc : float
+        Standard error of V_acc (Å^3).
+    box : tuple
+        ((xmin,xmax),(ymin,ymax),(zmin,zmax)) used for sampling.
+    [rp, frac_acc] : optional
+        Only if with_details=True.
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -392,7 +585,37 @@ def accessible_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
 
 def blocked_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
     """
-    Convenience: return the absolute blocked (inaccessible) volume and its SE.
+        Estimate the absolute blocked (inaccessible) volume for a probe of radius `rp`
+    using Monte Carlo sampling.
+
+    The blocked region is the union of spheres with radii (r_i + rp) centered at
+    `coords`. We sample uniformly in a padded bounding box that encloses all
+    inflated spheres, compute the accessible volume V_acc via Monte Carlo, then
+    return V_blocked = V_box - V_acc along with its standard error.
+
+    Parameters
+    ----------
+    coords : array_like, shape (N, 3)
+        Atomic coordinates in Å.
+    radii : array_like, shape (N,)
+        Atomic (van der Waals) radii in Å.
+    rp : float, optional
+        Probe radius in Å (e.g., 1.4 for water). Default is 1.4.
+    n : int, optional
+        Number of Monte Carlo samples. Default is 1_000_000.
+    pad : float, optional
+        Extra padding (Å) added to all sides of the bounding box. Default is 2.0.
+    rng : np.random.Generator, optional
+        Random number generator. If None, uses np.random.default_rng().
+
+    Returns
+    -------
+    V_inacc : float
+        Blocked (inaccessible) volume in Å³.
+    SE_inacc : float
+        Standard error of V_inacc in Å³ (same magnitude as the SE of V_acc).
+    box : tuple
+        Sampling box as ((xmin, xmax), (ymin, ymax), (zmin, zmax)) in Å.
     """
     V_acc, SE_acc, box = accessible_volume_mc(coords, radii, rp=rp, n=n, pad=pad, rng=rng)
     (xmin,xmax),(ymin,ymax),(zmin,zmax) = box
@@ -405,17 +628,47 @@ def blocked_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
 # ---- Convenience: end-to-end for a DNA file ----
 def dna_accessible_volume(filename, rp=1.4, n=1_000_000, pad=2.0, rng=None):
     """
-    Read DNA atoms from a simple text file (symbol x y z per line),
-    compute accessible volume to probe radius rp.
+    Estimate DNA solvent-accessible volume (Å³) for a probe of radius `rp`.
+
+    Reads a text file with lines: <element> <x> <y> <z> (Å), maps elements to vdW radii,
+    inflates by `rp`, builds a padded box, and uses Monte Carlo with `n` samples.
+
+    Params
+    ------
+    filename : str
+    rp : float  (probe radius, Å)
+    n : int     (samples)
+    pad : float (box padding, Å)
+    rng : np.random.Generator | None
+
+    Returns
+    -------
+    V_acc : float      # accessible volume (Å³)
+    SE_acc : float     # MC standard error (Å³)
+    box : tuple        # ((xmin,xmax),(ymin,ymax),(zmin,zmax)) in Å
     """
     elems, coords = read_dna_coordinates(filename)
     radii = atomic_radii(elems)
     return accessible_volume_mc(coords, radii, rp=rp, n=n, pad=pad, rng=rng)
 
-# ---- Tests (Task 4 quick checks) ----
+
 def _sphere_test(r=10.0, L=100.0, n=2_000_000, rp=0.0, seed=0):
     """
-    One-sphere sanity check. Returns (MC_inaccessible, analytic_inaccessible, zscore).
+        Sanity check against the analytic sphere volume.
+
+    Parameters
+    ----------
+    r : float        # sphere radius (Å)
+    L : float        # cubic box side (Å), box = [0,L]^3
+    n : int          # number of Monte Carlo samples
+    rp : float       # probe radius (Å), uses inflated radius r+rp
+    seed : int       # RNG seed
+
+    Returns
+    -------
+    V_mc : float     # MC estimate of blocked volume (Å³)
+    V_true : float   # analytic blocked volume = (4/3)π(r+rp)^3 (Å³)
+    z : float        # z-score = (V_mc - V_true) / SE, should be |z| ≲ 2
     """
     rng = np.random.default_rng(seed)
     c = np.array([[L/2, L/2, L/2]])
@@ -425,6 +678,6 @@ def _sphere_test(r=10.0, L=100.0, n=2_000_000, rp=0.0, seed=0):
     V_box = box_volume(box)
     V_mc = V_box * p_in
     V_true = (4.0/3.0) * np.pi * (r + rp)**3
-    z = (V_mc - V_true) / (V_box * se_p + 1e-12)  # ~N(0,1) if well-sampled
+    z = (V_mc - V_true) / (V_box * se_p + 1e-12)  
     return V_mc, V_true, z
 
