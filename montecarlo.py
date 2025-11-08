@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+### ----------------------------Topic 1 ---------------------------------
 #Task 0
 def make_box(xlen, ylen, zlen, origin=(0, 0, 0)):
     """Return a 3D simulation box as ((xmin, xmax), (ymin, ymax), (zmin, zmax))."""
@@ -164,8 +164,9 @@ def fraction_inside_sphere(box, center, radius, n, rng=None):
     p = inside.mean()
     se = np.sqrt(p * (1.0 - p) / n)
     return p, se
+# source: https://en.wikipedia.org/w/index.php?title=Monte_Carlo_integration&oldid=1319230291
 
-import numpy as np
+
 
 #task5 
 def estimate_pi_2d(n, rng=None):
@@ -199,6 +200,7 @@ def estimate_pi_2d(n, rng=None):
     se_p = np.sqrt(p_hat * (1.0 - p_hat) / n)
     se = 4.0 * se_p
     return pi_hat, se
+# Sources:https://en.wikipedia.org/w/index.php?title=Monte_Carlo_integration&oldid=1319230291
 
 #task 7
 def fraction_inside_union(box, centers, radii, n, rng=None):
@@ -244,8 +246,9 @@ def fraction_inside_union(box, centers, radii, n, rng=None):
     p = inside_any.mean()
     se = np.sqrt(p * (1.0 - p) / n)
     return p, se
+# Sources:https://en.wikipedia.org/w/index.php?title=Monte_Carlo_integration&oldid=1319230291
 
-import numpy as np
+
 
 #task 8
 def read_dna_coordinates(filename):
@@ -329,6 +332,8 @@ def density_from_atoms(elements, volume_angstrom3):
     density = total_mass_g / volume_cm3
     return density
 
+###------------------Topic 2---------------------------
+
 def _wrap(P, box):
     """
         Wrap 3D point(s) P into the periodic box.
@@ -351,10 +356,11 @@ def _wrap(P, box):
     lens = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
     return mins + ((P - mins) % lens)
 
+
 # Task 1
 def random_walkers_3d(box, n_walkers, n_steps, step_sigma=1.0, rng=None):
     """
-    Generate 3D random-walk trajectories (loop version).
+    Generate 3D random-walk trajectories.
 
     Parameters
     ----------
@@ -385,7 +391,7 @@ def random_walkers_3d(box, n_walkers, n_steps, step_sigma=1.0, rng=None):
         traj[t] = _wrap(traj[t-1] + rng.normal(0.0, step_sigma, size=(n_walkers, 3)), box)
     return traj
 
-# Task 2 (fast)
+# Task 2 
 def random_walkers_3d_fast(box, n_walkers, n_steps, step_sigma=1.0, rng=None):
     """
        Generate 3D random-walk trajectories (vectorized/fast).
@@ -533,6 +539,8 @@ def inaccessible_fraction_union(box, centers, radii, n, rng=None):
     p = inside_any.mean()
     se = np.sqrt(p * (1.0 - p) / n)
     return p, se
+# Sources:https://en.wikipedia.org/w/index.php?title=Monte_Carlo_integration&oldid=1319230291
+
 
 def accessible_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
     """
@@ -553,7 +561,7 @@ def accessible_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
     rng : np.random.Generator, optional
         RNG to use; a new default_rng() is created if None.
     batch : int or None, optional
-        If set, process samples in batches of this size (memory-safe).
+        If set, process samples in batches of this size.
     with_details : bool, optional
         If True, also return (rp, accessible_fraction).
 
@@ -582,6 +590,8 @@ def accessible_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
     V_acc = V_box * p_acc
     SE_acc = V_box * se_p
     return V_acc, SE_acc, box
+# Sources:https://en.wikipedia.org/w/index.php?title=Monte_Carlo_integration&oldid=1319230291
+
 
 def blocked_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
     """
@@ -623,9 +633,9 @@ def blocked_volume_mc(coords, radii, rp=1.4, n=1_000_000, pad=2.0, rng=None):
     V_inacc = V_box - V_acc
     SE_inacc = SE_acc  # same magnitude, since SE scales with V_box
     return V_inacc, SE_inacc, box
+# Sources:https://en.wikipedia.org/w/index.php?title=Monte_Carlo_integration&oldid=1319230291
 
 
-# ---- Convenience: end-to-end for a DNA file ----
 def dna_accessible_volume(filename, rp=1.4, n=1_000_000, pad=2.0, rng=None):
     """
     Estimate DNA solvent-accessible volume (Å³) for a probe of radius `rp`.
@@ -650,6 +660,8 @@ def dna_accessible_volume(filename, rp=1.4, n=1_000_000, pad=2.0, rng=None):
     elems, coords = read_dna_coordinates(filename)
     radii = atomic_radii(elems)
     return accessible_volume_mc(coords, radii, rp=rp, n=n, pad=pad, rng=rng)
+# Sources:https://en.wikipedia.org/w/index.php?title=Monte_Carlo_integration&oldid=1319230291
+
 
 
 def _sphere_test(r=10.0, L=100.0, n=2_000_000, rp=0.0, seed=0):
@@ -668,7 +680,7 @@ def _sphere_test(r=10.0, L=100.0, n=2_000_000, rp=0.0, seed=0):
     -------
     V_mc : float     # MC estimate of blocked volume (Å³)
     V_true : float   # analytic blocked volume = (4/3)π(r+rp)^3 (Å³)
-    z : float        # z-score = (V_mc - V_true) / SE, should be |z| ≲ 2
+    z : float        # z-score = (V_mc - V_true) / SE, should be |z| <= 2
     """
     rng = np.random.default_rng(seed)
     c = np.array([[L/2, L/2, L/2]])
@@ -680,4 +692,6 @@ def _sphere_test(r=10.0, L=100.0, n=2_000_000, rp=0.0, seed=0):
     V_true = (4.0/3.0) * np.pi * (r + rp)**3
     z = (V_mc - V_true) / (V_box * se_p + 1e-12)  
     return V_mc, V_true, z
+# Sources:https://en.wikipedia.org/w/index.php?title=Monte_Carlo_integration&oldid=1319230291
+
 
